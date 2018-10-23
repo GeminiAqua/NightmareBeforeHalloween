@@ -5,6 +5,11 @@ TagManager:
   serializedVersion: 2
   tags:
   - Ground
+  - Weapon
+  - Monster
+  - EnemyWeapon
+  - PlayerProjectile
+  - EnemyProjectile
   layers:
   - Default
   - TransparentFX
