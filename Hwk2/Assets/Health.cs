@@ -4,25 +4,30 @@ using UnityEngine;
 
 public class Health : MonoBehaviour
 {
-    public int startingHealth = 100;
+    public int startingHealth = 250;
+    public int extraHPMultiplier = 1;
     public int currentHealth;
+    public int minHealth = 0;
+    public bool isDead;
+    public int currLevel;
 
-
-    // Use this for initialization
     void Start()
     {
-        resetHealthToStart();
+        currentHealth = startingHealth;
+        Invoke("resetHealth", 0.1f);
     }
 
     // Update is called once per frame
     void Update()
     {
-
+        checkDead();
     }
+    
     public int GetHealth()
     {
         return this.currentHealth;
     }
+    
     public void AddHealth(int increaseValue)
     {
         if (!isHealthfull())
@@ -31,7 +36,7 @@ public class Health : MonoBehaviour
         }
         //make sure not to go over
         if (currentHealth > startingHealth)
-            resetHealthToStart();
+            resetHealth();
     }
     public void DecrementHealth(int decrementValue)
     {
@@ -46,9 +51,22 @@ public class Health : MonoBehaviour
         }
         return true;
     }
-    public void resetHealthToStart()
+    
+    public void resetHealth()
     {
-        this.currentHealth = startingHealth;
+        GameObject levelText = GameObject.FindWithTag("LevelCounter");
+        currLevel = levelText.GetComponent<LevelScript>().levelVar;
+        if (gameObject.tag.Equals("Player")){
+            this.currentHealth = startingHealth;
+        } else {
+            this.currentHealth = startingHealth + (currLevel * extraHPMultiplier);
+        }
+    }
+    
+    void checkDead(){
+        if (currentHealth <= 0){
+            isDead = true;
+        }
     }
 
 }

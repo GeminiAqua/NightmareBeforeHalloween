@@ -1,101 +1,150 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 
 public class AIMouseSpear : MonoBehaviour
 {
-
+    public EnemyCounterScript enemyCounterScript;
     public Transform target;
-    public int damageAmount;
-    public Rigidbody rBody;
-    UnityEngine.AI.NavMeshAgent agent;
-    Animator animator;
-    Health health;
-    float damageCooldown = 1f;
-    bool isDamaging;
+    public float defaultSpeed = 5f;
+    public int damageTaken = 10;
+    public int attackPower = 10;
+    public float attackCooldown = 1f;
+    public float lastAttackTime = 0f;
+    public bool isAbleToAttack;
+    public float takeDamageCooldown = 0.25f;
+    public bool isAbleToBeDamaged;
+    public bool alreadyDead;
+    public GameObject impactParticles;
     
+    Rigidbody rBody;
+    UnityEngine.AI.NavMeshAgent agent;
+    public GameObject deathSound;
+    public Animator animator;
+    public Health health;
+    public TyController player;
+
     void Start()
     {
-        isDamaging = true;
+        GameObject counterText = GameObject.FindWithTag("EnemyCounter");
+        enemyCounterScript = counterText.GetComponent<EnemyCounterScript>();
+        isAbleToAttack = true;
+        isAbleToBeDamaged = true;
         animator = gameObject.GetComponent<Animator>();
-        rBody = GetComponent<Rigidbody>();
+        rBody = gameObject.GetComponent<Rigidbody>();
         target = GameObject.FindWithTag("Player").transform;
-        agent = GetComponent<UnityEngine.AI.NavMeshAgent>(); // the agent component of
-        health = GetComponent<Health>();
-        damageAmount = 10;
+        player = target.GetComponent<TyController>();
+        agent = gameObject.GetComponent<UnityEngine.AI.NavMeshAgent>(); // the agent component of
+        health = gameObject.GetComponent<Health>();
+        deathSound = Resources.Load("DeathMouse") as GameObject;
     }
     void Update()
     {
-        if (health.GetHealth() <= 0)
+        if (!health.isDead)
         {
-            Die();
+            if(player.isAlive){
+                agent.SetDestination(target.position);
+                transform.LookAt(target);
+                float dist = Vector3.Distance(transform.position, target.position);
+                if (dist <= agent.stoppingDistance){
+                    Attack();
+                } else {
+                    Chasing();
+                }
+            } else {
+                animator.SetInteger("animation", 0);
+            }
         } else {
-			agent.SetDestination(target.position); // move towards the target while avoiding things// move towards the target while avoiding things
-            Chasing();
+            if (!alreadyDead){
+                Die();
+            }
+			
         }
     }
     void Chasing()
     {
-        animator.SetInteger("animation", 5);
+        animator.SetInteger("animation", 1);
     }
     void Attack()
     {
-        animator.SetInteger("animation", 8);
+        if (isAbleToAttack){
+            agent.speed = 0f;
+            Invoke("resetSpeed", 0.4f);
+            animator.SetTrigger("Attack");
+            animator.SetInteger("animation", 0);
+            isAbleToAttack = false;
+            Invoke("canDamage", attackCooldown);
+        }
     }
+    
+    void attackDelay(){
+        player.doDamageToPlayer(attackPower);
+    }
+    
     void Die()
     {
-		agent.Stop();
-        Destroy(rBody);
-        agent.SetDestination(transform.position);
+        alreadyDead = true;
+        GameObject newMob = Instantiate(deathSound, transform.position, transform.rotation);
+        // newMob.transform.position = transform.position;
+		agent.isStopped = true;
         animator.SetTrigger("Dead");
-
-        if(AnimationIsPlaying("death01") == false)
-        {
-            StartCoroutine(WaitForAnimation());
-
-        }
+        enemyCounterScript.decrementEnemyCount();
+        Destroy(gameObject, 1.5f);
     }
-    private void OnCollisionStay(Collision collision)
-    {
-        if (collision.gameObject.tag.Equals("Weapon"))
-        {
-           // Debug.Log("there is a collision with" + collision.gameObject);
-            health.DecrementHealth(50);
+    
+    private void OnCollisionEnter(Collision collision) {
+        if(collision.gameObject.tag.Equals("Player")){
+            agent.speed = 0f;
         }
-    }
-
-    private void OnCollisionEnter(Collision collision)
-    {
-        if (collision.gameObject.tag.Equals("Player") && isDamaging)
-        {
-            float damageTime = collision.gameObject.GetComponent<TyController>().timeLastTookDamage;
-            if (Time.timeSinceLevelLoad < (damageTime + collision.gameObject.GetComponent<TyController>().takeDamageCooldown)){
-                Debug.Log("Player recently took damage. Can't deal damage yet");
-            } else {
-                collision.gameObject.GetComponent<TyController>().timeLastTookDamage = Time.timeSinceLevelLoad;
-                isDamaging = false;
-                Invoke("canDamage", damageCooldown);
-                Attack();
-                int playeHealth = collision.gameObject.GetComponent<Health>().GetHealth();
-               
-                collision.gameObject.GetComponent<Health>().DecrementHealth(damageAmount);
-                Debug.Log(gameObject.name + " did " + damageAmount + " damage");
+        if (collision.gameObject.tag.Equals("Weapon") || collision.gameObject.tag.Equals("PlayerProjectile")){
+            knockback();
+            if (isAbleToBeDamaged){
+                Instantiate(impactParticles, transform);
+                Debug.Log("there is a collision with" + collision.gameObject);
+                isAbleToBeDamaged = false;
+                Invoke("canBeDamaged", takeDamageCooldown);
+                health.DecrementHealth(10);
             }
         }
     }
+    
+    public void doMeleeDamage(int ATK){
+        knockback();
+        isAbleToBeDamaged = false;
+        Invoke("canBeDamaged", takeDamageCooldown);
+        health.DecrementHealth(ATK);
+    }
+    
+    private void OnCollisionExit(Collision collision){
+        if(collision.gameObject.tag.Equals("Player")){
+            resetSpeed();
+        }
+    }
+    
+    void knockback(){
+        animator.SetTrigger("Knockback");
+        agent.speed = -10f;
+        isAbleToAttack = false;
+        Invoke("resetSpeed", 0.5f);
+        Invoke("canDamage", 0.5f);
+    }
+    
+    void resetSpeed(){
+        agent.speed = defaultSpeed;
+    }
+
     bool AnimationIsPlaying(string animation)
     {
         return animator.GetCurrentAnimatorStateInfo(0).IsName(animation);
     }
 
-    private IEnumerator WaitForAnimation()
-    {
-        yield return new WaitForSeconds(3);
-        Destroy(gameObject);
+    void canDamage(){
+        isAbleToAttack = true;
     }
     
-    void canDamage(){
-        isDamaging = true;
+    void canBeDamaged(){
+        isAbleToBeDamaged = true;
     }
 }
 

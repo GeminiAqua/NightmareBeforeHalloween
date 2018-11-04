@@ -1,52 +1,16 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 
 public class TyController : MonoBehaviour {
     
-    // public float velocity = 10f;
-    // public float jumpSpeed = 20f;
-    // public float rotationVel = 100f;
-    // public bool isGrounded = true;
-    // public LayerMask ground;
-    // Animator anim;
-
-	// Use this for initialization
-	// void Start () {
-		// anim = GetComponent<Animator>();
-        // anim.SetBool("Grounded", true);
-        // anim.SetBool("isStill", true);
-	// }
-	
-	// Update is called once per frame
-	// void Update () {
-		// Move();
-        // Attack();
-        // checkGrounded();
-        // Jump();
-	// }
-    
-    // void Move(){
-        // float moveVert = Input.GetAxis("Vertical");
-        // anim.SetFloat("Velocity", moveVert);
-        // transform.position += new Vector3(0, 0, moveVert * velocity * Time.deltaTime);
-        
-        // float moveHori = Input.GetAxis("Horizontal");
-        // anim.SetFloat("Velocity", moveHori);
-        // transform.position += new Vector3(moveHori * velocity * Time.deltaTime, 0 , 0);
-        
-        // if ( (moveVert == 0) ){
-            // anim.SetBool("isStill", true);
-        // } else {
-            // anim.SetBool("isStill", false);
-        // }
-        
-    // }
-    
     [System.Serializable]
     public class MoveSettings{
-        public float forwardVel = 15;
+        public float baseForwardVel = 10;
+        public float forwardVel = 10;
         public float rotateVel = 100;
+        public float baseJumpVel = 25;
         public float jumpVel = 25;
         public float distToGround = 0.02f;
         public LayerMask ground;
@@ -69,11 +33,15 @@ public class TyController : MonoBehaviour {
     
     public Health HP;
     public bool isAlive = true;
-    public bool isDamaging = true;
+    public bool isAbleToAttack = true;
     public int damageAmount = 50;
-    public float takeDamageCooldown = 3f;
+    public float takeDamageCooldown = 1.5f;
     public bool isInvincible;
     public float timeLastTookDamage = 0.0f;
+    public string currentWeapon = "staff";
+    public SnowflakeProjectileScript snowflakeScript;
+    public Image HPBar;
+    public bool isSpeedy;
 
     Animator anim;
     Quaternion targetRotation;
@@ -81,7 +49,7 @@ public class TyController : MonoBehaviour {
     float forwardInput;
     float turnInput;
     float jumpInput;
-    float attackInput;
+    public float attackInput;
     Vector3 velocity = Vector3.zero;
     Bounds bounds;
     
@@ -111,10 +79,10 @@ public class TyController : MonoBehaviour {
 	
 	// Update is called once per frame
 	void Update () {
+        updateHPBar();
         if (isAlive){
             GetInput();
             Turn();
-            Debug.DrawRay(transform.position, transform.TransformDirection(Vector3.forward) * 2, Color.red);
             checkAlive();
         } else {
             anim.SetTrigger("Dead");
@@ -182,11 +150,14 @@ public class TyController : MonoBehaviour {
     }
     
     void Attack(){
-        if ( attackInput > 0 && isDamaging){
-            int layerMask = 1 << 10;
+        if ( attackInput > 0 && isAbleToAttack){
+            // int layerMask = 1 << 10;
             anim.SetTrigger("Slash");
-            isDamaging = false;
-            Invoke("canDamage", 0.25f);
+            if (Equals(currentWeapon,"staff")){
+                snowflakeScript.snowflakeAttack();
+            }
+            isAbleToAttack = false;
+            Invoke("canDamage", 0.85f);
             
             // RaycastHit hit;
             // if (Physics.Raycast (transform.position, transform.TransformDirection(Vector3.forward), out hit, 2f, layerMask)) {
@@ -198,23 +169,83 @@ public class TyController : MonoBehaviour {
         }
     }
     
-    // void OldAttack(){
-        // if (Input.GetKeyDown(KeyCode.F)){
-            // anim.SetTrigger("Slash");
-        // }
-    // }
-    
-    void canDamage(){
-        isDamaging = true;
+    private void OnCollisionEnter(Collision collision) { // 
+        if (!isInvincible){
+            if (collision.gameObject.tag.Equals("EnemyProjectile")){
+                recentlyTookDamage();
+                Debug.Log("Ty took damage from " + collision.gameObject);
+                HP.DecrementHealth(20);
+            }
+        }
     }
     
+    public void doDamageToPlayer(int monsterPower){
+        if (!isInvincible){
+            recentlyTookDamage();
+            HP.DecrementHealth(monsterPower);
+            // Debug.Log("Ty took damage from a monster");
+        }
+    }
+
     void recentlyTookDamage(){
         isInvincible = true;
+        Invoke("notInvincinble", takeDamageCooldown);
+    }
+    
+    public void powerUpInvincible(float duration){
+        if (isInvincible){ // This makes sure invincibility buff gets refreshed
+            CancelInvoke("notInvincinble");
+        }
+        isInvincible = true;
+        Invoke("notInvincinble", duration);
+    }
+    
+    void notInvincinble(){
+        isInvincible = false;
+    }
+    
+    // i kept all speed naming the same BUT I MADE IT DOUBLE JUMP INSTEAD OF SPEED FOR BETTER PLAYABILITY
+    public void powerUpSpeed(float duration, float multiplier){
+        if (isSpeedy){
+            // CancelInvoke("resetSpeed");
+            CancelInvoke("resetJump");
+        }
+        isSpeedy = true;
+        // moveSetting.forwardVel *= multiplier;
+        moveSetting.jumpVel *= multiplier;
+        // Invoke("resetSpeed", duration);
+        Invoke("resetJump", duration);
+    }
+    
+    void resetSpeed(){
+        moveSetting.forwardVel = moveSetting.baseForwardVel;
+    }
+    
+    void resetJump(){
+        moveSetting.jumpVel = moveSetting.baseJumpVel;
+    }
+    
+    void canDamage(){
+        isAbleToAttack = true;
     }
     
     void checkAlive(){
         if (HP.currentHealth <= 0){
             isAlive = false;
+            anim.SetTrigger("Dead");
+            gameObject.GetComponent<CapsuleCollider>().center = new Vector3(0f, 2f, 0f);
         }
+    }
+    
+    void updateHPBar(){
+        HPBar.fillAmount = ratioHP(HP.currentHealth, HP.minHealth, HP.startingHealth, 0f, 1f);
+    }
+    
+    float ratioHP(float currHealth, float inMin, float inMax, float outMin, float outMax){
+        return (currHealth - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
+    }
+    
+    public void updateWeapon(string weaponName){
+        currentWeapon = weaponName;
     }
 }
